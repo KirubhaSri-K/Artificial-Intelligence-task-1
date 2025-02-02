@@ -1,0 +1,95 @@
+import tensorflow as tf
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.layers import Embedding, LSTM, Dense
+from tensorflow.keras.models import Sequential
+import numpy as np
+import random
+import re
+
+# Sample text corpus for training
+data = """
+Artificial Intelligence is transforming industries by automating tasks and analyzing data.
+Machine learning and neural networks are central to these advancements.
+Deep learning, a subset of machine learning, uses multi-layered neural networks.
+"""
+
+# Preprocess the text
+def preprocess_text(text):
+    text = re.sub(r'[^a-zA-Z ]+', '', text)
+    text = text.lower()
+    return text.split()
+
+# Prepare the data for text generation
+def create_sequences(corpus, seq_length=3):
+    sequences = []
+    for i in range(seq_length, len(corpus)):
+        seq = corpus[i - seq_length:i + 1]
+        sequences.append(seq)
+    return sequences
+
+# Encode the text sequences
+def encode_sequences(sequences, word_index):
+    encoded_sequences = []
+    for seq in sequences:
+        encoded_sequences.append([word_index[word] for word in seq])
+    return np.array(encoded_sequences)
+
+# Build the LSTM model
+def build_model(vocab_size, seq_length):
+    model = Sequential([
+        Embedding(vocab_size, 64, input_length=seq_length),
+        LSTM(128, return_sequences=True),
+        LSTM(128),
+        Dense(64, activation='relu'),
+        Dense(vocab_size, activation='softmax')
+    ])
+
+    model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    return model
+
+# Generate text based on a seed phrase
+def generate_text(model, tokenizer, seed_text, max_words=50):
+    for _ in range(max_words):
+        token_list = tokenizer.texts_to_sequences([seed_text])[0]
+        token_list = pad_sequences([token_list], maxlen=model.input_shape[1], padding='pre')
+        predicted = model.predict(token_list, verbose=0)
+        predicted_word_index = np.argmax(predicted)
+
+        output_word = ""  
+        for word, index in tokenizer.word_index.items():
+            if index == predicted_word_index:
+                output_word = word
+                break
+
+        seed_text += " " + output_word
+    return seed_text
+
+if __name__ == "__main__":
+    # Preprocess the text data
+    corpus = preprocess_text(data)
+
+    # Create sequences and vocabulary
+    seq_length = 3
+    sequences = create_sequences(corpus, seq_length)
+
+    words = sorted(set(corpus))
+    vocab_size = len(words) + 1  # Plus one for padding
+
+    # Build the word index dictionary
+    word_index = {word: index + 1 for index, word in enumerate(words)}
+
+    # Prepare the input-output pairs
+    sequences_encoded = encode_sequences(sequences, word_index)
+    X = sequences_encoded[:, :-1]
+    y = sequences_encoded[:, -1]
+
+    # Build and train the LSTM model
+    model = build_model(vocab_size, seq_length)
+
+    model.fit(X, y, epochs=100, verbose=1)
+
+    # Generate text based on a user prompt
+    seed_text = input("Enter a seed text: ")
+    generated_text = generate_text(model, tf.keras.preprocessing.text.Tokenizer(word_index), seed_text)
+    print("\nGenerated Text:")
+    print(generated_text)
